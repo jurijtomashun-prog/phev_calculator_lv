@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PHEV Cost Calculator — Riga, Latvia</title>
+  <meta name="description" content="Calculate and compare real driving costs for a Plug-in Hybrid Vehicle in Riga, Latvia. Live Nord Pool electricity prices, fuel costs, break-even analysis.">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+</head>
+<body>
+
+  <!-- ==================== HEADER ==================== -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="header-title">
+        <h1>⚡ PHEV Cost Calculator</h1>
+        <span class="subtitle">Riga, Latvia</span>
+      </div>
+      <div class="header-actions">
+        <span class="header-status" id="lastUpdated"></span>
+        <button class="btn btn--ghost btn--sm" id="resetSettings" title="Reset all settings">↺ Reset</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==================== MAIN DASHBOARD ==================== -->
+  <main class="app-main">
+    <div class="dashboard-grid">
+
+      <!-- ============ VEHICLE CONFIG CARD ============ -->
+      <div class="card">
+        <div class="card-header">
+          <h3>🚗 Vehicle Configuration</h3>
+        </div>
+        <div class="card-body">
+
+          <!-- Battery -->
+          <div class="form-group">
+            <label for="batteryCapacity">Battery Capacity</label>
+            <div class="input-with-unit" style="max-width: 200px">
+              <input type="number" id="batteryCapacity" min="0" max="200" step="0.1" placeholder="e.g. 19.7">
+              <span class="unit">kWh</span>
+            </div>
+            <span class="error-text"></span>
+          </div>
+
+          <!-- Fuel consumption -->
+          <div class="form-group">
+            <label for="fuelConsumption">Fuel Consumption (engine)</label>
+            <div class="input-with-unit">
+              <input type="number" id="fuelConsumption" min="0" max="30" step="0.1" placeholder="e.g. 7.0">
+              <span class="unit">L/100km</span>
+            </div>
+            <span class="error-text"></span>
+          </div>
+
+          <div class="divider"></div>
+
+          <!-- Electric Range -->
+          <div class="form-row">
+            <div class="form-group">
+              <label for="electricRangeSummer">Summer Electric Range</label>
+              <div class="input-with-unit">
+                <input type="number" id="electricRangeSummer" min="0" max="500" step="1" placeholder="e.g. 55">
+                <span class="unit">km</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="electricRangeWinter">Winter Electric Range</label>
+              <div class="input-with-unit">
+                <input type="number" id="electricRangeWinter" min="0" max="500" step="1" placeholder="e.g. 35">
+                <span class="unit">km</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Season toggle -->
+          <div class="form-group" style="display:flex; align-items:center; gap: var(--space-md); flex-wrap: wrap;">
+            <label style="margin-bottom:0">Season:</label>
+            <div class="toggle-group">
+              <button class="season-toggle active" data-season="summer">☀️ Summer</button>
+              <button class="season-toggle" data-season="winter">❄️ Winter</button>
+            </div>
+            <div style="display:flex; align-items:center; gap: var(--space-xs);">
+              <input type="checkbox" id="useManualRange" style="width:auto; accent-color: var(--color-primary);">
+              <label for="useManualRange" style="margin-bottom:0; font-size: var(--text-sm);">Manual range override</label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="input-with-unit" style="max-width: 200px">
+              <input type="number" id="manualRange" min="0" max="500" step="1" placeholder="km" disabled>
+              <span class="unit">km</span>
+            </div>
+          </div>
+
+          <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-xs);" id="consumptionInfo">
+            Enter vehicle data above
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ ELECTRICITY PRICING CARD ============ -->
+      <div class="card">
+        <div class="card-header">
+          <h3>⚡ Electricity Pricing</h3>
+          <span id="npFetchStatus"></span>
+        </div>
+        <div class="card-body">
+
+          <!-- Source toggle -->
+          <div class="elec-source-toggle" style="margin-bottom: var(--space-md);">
+            <button class="btn btn--ghost btn--sm elec-source-btn active" data-source="manual">Manual Price</button>
+            <button class="btn btn--ghost btn--sm elec-source-btn" data-source="nordpool">Nord Pool Live</button>
+          </div>
+
+          <!-- Manual electricity section -->
+          <div id="elecManualSection">
+            <div class="form-group">
+              <label for="homeElectricityPrice">Home Electricity Price (total incl. all fees)</label>
+              <div class="input-with-unit">
+                <input type="number" id="homeElectricityPrice" min="0" max="2" step="0.001" placeholder="0.22">
+                <span class="unit">€/kWh</span>
+              </div>
+              <span class="hint">Enter your total per-kWh price including distribution, procurement, VAT</span>
+            </div>
+          </div>
+
+          <!-- Nord Pool section -->
+          <div id="elecNordpoolSection" class="hidden">
+
+            <!-- Error display -->
+            <div id="nordpoolError" class="warning-banner hidden">
+              <span class="icon">⚠️</span>
+              <span id="nordpoolErrorText"></span>
+            </div>
+
+            <!-- Hourly table -->
+            <div id="nordpoolTableSection" class="hidden">
+              <div class="nordpool-summary">
+                <div class="nordpool-stat">
+                  <div class="label">Min</div>
+                  <div class="val min" id="npMin">—</div>
+                </div>
+                <div class="nordpool-stat">
+                  <div class="label">Max</div>
+                  <div class="val max" id="npMax">—</div>
+                </div>
+                <div class="nordpool-stat">
+                  <div class="label">Average</div>
+                  <div class="val avg" id="npAvg">—</div>
+                </div>
+              </div>
+
+              <div id="npDate" style="font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-sm);"></div>
+              <div id="npVatNotice" style="font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-sm);"></div>
+
+              <!-- Hour selector -->
+              <div class="hour-select-wrapper">
+                <label for="nordpoolHourSelect" style="font-size: var(--text-sm); font-weight:500; color: var(--color-text-secondary);">Use price from:</label>
+                <select id="nordpoolHourSelect">
+                  <option value="average">Daily Average</option>
+                  <option value="range">📅 Custom Range...</option>
+                </select>
+              </div>
+
+              <!-- Range picker — shown when "Custom Range" is selected -->
+              <div id="nordpoolRangePicker" class="range-picker hidden">
+                <div class="range-picker-row">
+                  <div class="range-picker-field">
+                    <label>From</label>
+                    <select id="rangeStart">
+                      <option value="0">00:00</option><option value="1">01:00</option><option value="2">02:00</option><option value="3">03:00</option>
+                      <option value="4">04:00</option><option value="5">05:00</option><option value="6">06:00</option><option value="7">07:00</option>
+                      <option value="8">08:00</option><option value="9">09:00</option><option value="10">10:00</option><option value="11">11:00</option>
+                      <option value="12">12:00</option><option value="13">13:00</option><option value="14">14:00</option><option value="15">15:00</option>
+                      <option value="16">16:00</option><option value="17">17:00</option><option value="18">18:00</option><option value="19">19:00</option>
+                      <option value="20">20:00</option><option value="21">21:00</option><option value="22" selected>22:00</option><option value="23">23:00</option>
+                    </select>
+                  </div>
+                  <div class="range-arrow">→</div>
+                  <div class="range-picker-field">
+                    <label>To (inclusive)</label>
+                    <select id="rangeEnd">
+                      <option value="0">00:00</option><option value="1">01:00</option><option value="2">02:00</option><option value="3">03:00</option>
+                      <option value="4">04:00</option><option value="5">05:00</option><option value="6" selected>06:00</option><option value="7">07:00</option>
+                      <option value="8">08:00</option><option value="9">09:00</option><option value="10">10:00</option><option value="11">11:00</option>
+                      <option value="12">12:00</option><option value="13">13:00</option><option value="14">14:00</option><option value="15">15:00</option>
+                      <option value="16">16:00</option><option value="17">17:00</option><option value="18">18:00</option><option value="19">19:00</option>
+                      <option value="20">20:00</option><option value="21">21:00</option><option value="22">22:00</option><option value="23">23:00</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="range-avg-display">
+                  Range avg: <strong id="rangeAvgValue">—</strong>
+                  <span id="rangeHoursCount" style="font-size: var(--text-xs); color: var(--color-text-muted);"></span>
+                </div>
+              </div>
+
+              <!-- Hourly prices table -->
+              <div class="hourly-table-wrapper" style="margin-top: var(--space-sm);">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Hour</th>
+                      <th>€/kWh</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="nordpoolBody"></tbody>
+                </table>
+              </div>
+
+              <button class="btn btn--ghost btn--sm" id="refreshNordPool" style="margin-top: var(--space-sm);">↻ Refresh Prices</button>
+            </div>
+
+            <!-- VAT & dynamic fee -->
+            <div class="divider"></div>
+            <div style="display:flex; align-items:center; gap: var(--space-sm); margin-top: var(--space-xs);">
+              <input type="checkbox" id="vatEnabled" checked style="width:auto; accent-color: var(--color-primary);">
+              <label for="vatEnabled" style="margin-bottom:0; font-size: var(--text-sm);">Apply VAT</label>
+              <div class="input-with-unit input-with-unit--compact" style="max-width: 120px;">
+                <input type="number" id="vatRate" min="0" max="50" step="1" value="21">
+                <span class="unit">%</span>
+              </div>
+            </div>
+
+            <div style="display:flex; align-items:center; gap: var(--space-sm); margin-top: var(--space-xs);">
+              <input type="checkbox" id="dynamicFeeEnabled" checked style="width:auto; accent-color: var(--color-primary);">
+              <label for="dynamicFeeEnabled" style="margin-bottom:0; font-size: var(--text-sm);">
+                Add dynamic tariff fee (0.039 €/kWh)
+              </label>
+            </div>
+
+            <!-- Fallback: paste JSON -->
+            <div id="nordpoolFallback" class="fallback-section hidden">
+              <p style="font-size: var(--text-sm); margin-bottom: var(--space-sm);">
+                <strong>CORS fallback:</strong> Paste the JSON from
+                <a href="https://nordpool.didnt.work/api/lv/prices?resolution=60" target="_blank" rel="noopener">nordpool.didnt.work/api/lv/prices</a>
+              </p>
+              <textarea id="nordpoolJsonInput" placeholder='Paste JSON here...'></textarea>
+              <button class="btn btn--primary btn--sm" id="parseNordpoolJson" style="margin-top: var(--space-sm);">Parse JSON</button>
+            </div>
+
+            <!-- Total computed price -->
+            <div class="total-price-display">
+              <span class="label">Total Electricity Price</span>
+              <span class="value" id="totalElecPrice">—</span>
+            </div>
+          </div>
+
+          <!-- Public charging -->
+          <div class="divider"></div>
+          <h4 style="font-size: var(--text-sm); margin-bottom: var(--space-sm);">Public Charging</h4>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="publicChargingPrice">Price per kWh</label>
+              <div class="input-with-unit">
+                <input type="number" id="publicChargingPrice" min="0" max="3" step="0.01" placeholder="0.35">
+                <span class="unit">€/kWh</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="publicSessionFee">Session Fee <span style="color:var(--color-text-muted)">(optional)</span></label>
+              <div class="input-with-unit">
+                <input type="number" id="publicSessionFee" min="0" max="20" step="0.01" placeholder="0.00">
+                <span class="unit">€</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ FUEL PRICE CARD ============ -->
+      <div class="card">
+        <div class="card-header">
+          <h3>⛽ Fuel Price</h3>
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <label for="fuelPrice">Fuel Price (95 octane, Riga)</label>
+            <div class="input-with-unit" style="max-width: 200px">
+              <input type="number" id="fuelPrice" min="0" max="5" step="0.001" placeholder="1.53">
+              <span class="unit">€/L</span>
+            </div>
+            <span class="hint">Enter current price manually — check your local station or <a href="https://gas.didnt.work/lv/95" target="_blank" rel="noopener">gas.didnt.work</a></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ COST SUMMARY CARD ============ -->
+      <div class="card full-width">
+        <div class="card-header">
+          <h3>💰 Cost per 100 km</h3>
+        </div>
+        <div class="card-body">
+          <div class="cost-cards">
+            <div class="cost-card">
+              <div class="cost-card__label">⚡ Electric (Home)</div>
+              <div class="cost-card__value" id="costElecHome">—</div>
+              <div class="cost-card__sub">per 100 km</div>
+            </div>
+            <div class="cost-card">
+              <div class="cost-card__label">🔌 Electric (Public)</div>
+              <div class="cost-card__value" id="costElecPublic">—</div>
+              <div class="cost-card__sub">per 100 km</div>
+            </div>
+            <div class="cost-card">
+              <div class="cost-card__label">⛽ Fuel</div>
+              <div class="cost-card__value" id="costFuel">—</div>
+              <div class="cost-card__sub">per 100 km</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ BREAK-EVEN CARD ============ -->
+      <div class="card full-width">
+        <div class="card-header">
+          <h3>⚖️ Break-Even Analysis</h3>
+        </div>
+        <div class="card-body">
+          <div class="breakeven-indicator" id="breakevenIndicator">
+            <div class="breakeven-status">⚡</div>
+            <div class="breakeven-details">
+              <div class="title">Enter vehicle data to see break-even analysis</div>
+              <div class="prices">
+                <span>Fill in battery capacity, range, fuel consumption, and prices</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ SOC CHARGE COST CARD ============ -->
+      <div class="card">
+        <div class="card-header">
+          <h3>🔋 Charge Cost Calculator</h3>
+        </div>
+        <div class="card-body">
+          <div class="charge-type-tabs">
+            <button class="btn btn--ghost btn--sm soc-type-btn active" data-type="home">🏠 Home</button>
+            <button class="btn btn--ghost btn--sm soc-type-btn" data-type="public">🔌 Public</button>
+          </div>
+
+          <div class="soc-range">
+            <label>Start SOC</label>
+            <input type="range" id="socStart" min="0" max="90" step="10" value="10">
+            <span class="soc-value" id="socStartVal">10%</span>
+          </div>
+
+          <div class="soc-range">
+            <label>Target SOC</label>
+            <input type="range" id="socTarget" min="10" max="100" step="10" value="80">
+            <span class="soc-value" id="socTargetVal">80%</span>
+          </div>
+
+          <div class="soc-result">
+            <div class="soc-result__item">
+              <div class="label">Energy Added</div>
+              <div class="val" id="socKwh">—</div>
+            </div>
+            <div class="soc-result__item">
+              <div class="label">Cost</div>
+              <div class="val" id="socCost">—</div>
+            </div>
+            <div class="soc-result__item">
+              <div class="label">Range Added</div>
+              <div class="val" id="socKm">—</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ SENSITIVITY TABLE CARD ============ -->
+      <div class="card full-width">
+        <div class="card-header">
+          <h3>📊 Electricity Price Sensitivity</h3>
+        </div>
+        <div class="card-body">
+          <div class="hourly-table-wrapper" style="max-height: 560px;">
+            <table class="sensitivity-table">
+              <thead>
+                <tr>
+                  <th>Spot Price</th>
+                  <th>Home € / 100 km<br><span style="font-weight:400; font-size:0.75em; color:var(--color-text-muted)">(incl. fees &amp; VAT)</span></th>
+                  <th>Public € / 100 km<br><span style="font-weight:400; font-size:0.75em; color:var(--color-text-muted)">(spot price only)</span></th>
+                  <th>Home cheaper<br>than Fuel?</th>
+                </tr>
+              </thead>
+              <tbody id="sensitivityBody"></tbody>
+              <tfoot id="sensitivityFoot"></tfoot>
+            </table>
+          </div>
+          <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-sm);">
+            🟡 Yellow row = break-even point &nbsp; 📍 Blue border = near your current home price &nbsp; Home column applies your dynamic fee + VAT settings on top of the spot price
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /dashboard-grid -->
+  </main>
+
+  <!-- ==================== SCRIPTS ==================== -->
+  <!-- Load order matters: storage → calculations → api → app -->
+  <script src="js/storage.js"></script>
+  <script src="js/calculations.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+
+</body>
+</html>
