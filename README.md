@@ -49,8 +49,7 @@ A fully local, client-side web application that calculates and compares real dri
 
 ## Riga-Specific Defaults
 
-- Distribution fee: €0.0486/kWh (Sadales Tīkls)
-- Mandatory procurement (OIK): €0.02279/kWh
+- If charging at home with dynamic tariff - addition of 0.039 Eur
 - VAT: 21%
 - Default fuel price: ~€1.53/L (95 octane)
 
@@ -61,3 +60,4 @@ Any modern browser (Chrome, Firefox, Edge, Safari). No IE11 support.
 ## License
 
 MIT — free to use and modify.
+
