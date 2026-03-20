@@ -158,7 +158,11 @@ const App = (() => {
         if (result.error) {
           showNordPoolError(result.error);
         } else {
-          nordPoolData = result;
+          nordPoolData = {
+            today: result,
+            tomorrow: null,
+            vatIncluded: result.vatIncluded || false,
+          };
           renderNordPoolCard();
           updateNordPoolHourSelector();
           recalculateAll();
@@ -237,6 +241,7 @@ const App = (() => {
     if (refreshNP) {
       refreshNP.addEventListener('click', () => {
         Storage.cacheSet('nordpool-prices', null, 0);
+        Storage.cacheSet('nordpool-prices-v2', null, 0);
         fetchNordPoolPrices();
       });
     }
@@ -384,27 +389,42 @@ const App = (() => {
 
     // --- Home electricity price ---
     let homeSpotPrice = 0;
-    if (s.electricitySource === 'nordpool' && nordPoolData && nordPoolData.prices.length > 0) {
-      if (s.selectedNordPoolHour === 'average' && nordPoolData.stats) {
-        homeSpotPrice = nordPoolData.stats.average;
+    if (s.electricitySource === 'nordpool' && nordPoolData && nordPoolData.today && nordPoolData.today.prices.length > 0) {
+      if (s.selectedNordPoolHour === 'average' && nordPoolData.today.stats) {
+        homeSpotPrice = nordPoolData.today.stats.average;
       } else if (s.selectedNordPoolHour === 'range') {
         const rs = parseInt(s.rangeStart, 10);
         const re = parseInt(s.rangeEnd, 10);
-        const hoursInRange = nordPoolData.prices.filter((_, i) => {
-          if (rs <= re) return i >= rs && i <= re;
-          return i >= rs || i <= re; // overnight wrap
-        });
+        const isOvernight = rs > re;
+
+        let hoursInRange;
+        if (isOvernight) {
+          // Overnight range: today's hours >= start, tomorrow's hours <= end
+          const todayHours = nordPoolData.today.prices.filter((_, i) => i >= rs);
+          const tomorrowHours = nordPoolData.tomorrow
+            ? nordPoolData.tomorrow.prices.filter((_, i) => i <= re)
+            : [];
+          hoursInRange = [...todayHours, ...tomorrowHours];
+        } else {
+          hoursInRange = nordPoolData.today.prices.filter((_, i) => i >= rs && i <= re);
+        }
+
         if (hoursInRange.length > 0) {
           homeSpotPrice = hoursInRange.reduce((sum, p) => sum + p.valueKwh, 0) / hoursInRange.length;
-        } else if (nordPoolData.stats) {
-          homeSpotPrice = nordPoolData.stats.average;
+        } else if (nordPoolData.today.stats) {
+          homeSpotPrice = nordPoolData.today.stats.average;
         }
       } else {
-        const hourIdx = parseInt(s.selectedNordPoolHour, 10);
-        if (!isNaN(hourIdx) && nordPoolData.prices[hourIdx]) {
-          homeSpotPrice = nordPoolData.prices[hourIdx].valueKwh;
-        } else if (nordPoolData.stats) {
-          homeSpotPrice = nordPoolData.stats.average;
+        // Individual hour selection (today: "0"-"23", tomorrow: "t0"-"t23")
+        const sel = String(s.selectedNordPoolHour);
+        const isTomorrow = sel.startsWith('t');
+        const hourIdx = isTomorrow ? parseInt(sel.substring(1), 10) : parseInt(sel, 10);
+        const dayData = isTomorrow ? (nordPoolData.tomorrow || null) : nordPoolData.today;
+
+        if (!isNaN(hourIdx) && dayData && dayData.prices[hourIdx]) {
+          homeSpotPrice = dayData.prices[hourIdx].valueKwh;
+        } else if (nordPoolData.today.stats) {
+          homeSpotPrice = nordPoolData.today.stats.average;
         }
       }
     } else {
@@ -600,7 +620,7 @@ const App = (() => {
       const consumption = Calc.electricConsumptionPer100km(battery, range);
       el.textContent = `${consumption.toFixed(1)} kWh/100km`;
     } else {
-      el.textContent = 'Enter vehicle data above';
+      el.textContent = 'Enter vehicle data';
     }
   }
 
@@ -616,53 +636,118 @@ const App = (() => {
   // =========================================================
 
   function renderNordPoolCard() {
-    if (!nordPoolData || !nordPoolData.prices.length) return;
+    if (!nordPoolData || !nordPoolData.today || !nordPoolData.today.prices.length) return;
 
-    const { prices, stats, date } = nordPoolData;
+    const todayPrices = nordPoolData.today.prices;
+    const todayStats = nordPoolData.today.stats;
+    const tomorrowPrices = nordPoolData.tomorrow ? nordPoolData.tomorrow.prices : null;
+    const tomorrowStats = nordPoolData.tomorrow ? nordPoolData.tomorrow.stats : null;
+    const hasTomorrow = !!tomorrowPrices;
 
-    // Summary stats
+    // Summary stats (today)
     const minEl = $('#npMin');
     const maxEl = $('#npMax');
     const avgEl = $('#npAvg');
-    if (minEl) minEl.textContent = stats ? Calc.formatKwhPrice(stats.min) : '—';
-    if (maxEl) maxEl.textContent = stats ? Calc.formatKwhPrice(stats.max) : '—';
-    if (avgEl) avgEl.textContent = stats ? Calc.formatKwhPrice(stats.average) : '—';
+    if (minEl) minEl.textContent = todayStats ? Calc.formatKwhPrice(todayStats.min) : '—';
+    if (maxEl) maxEl.textContent = todayStats ? Calc.formatKwhPrice(todayStats.max) : '—';
+    if (avgEl) avgEl.textContent = todayStats ? Calc.formatKwhPrice(todayStats.average) : '—';
 
-    // Date
+    // Date display
     const dateEl = $('#npDate');
-    if (dateEl) dateEl.textContent = date ? `Prices for: ${date}` : '';
+    if (dateEl) {
+      let dateText = nordPoolData.today.date ? `Today: ${nordPoolData.today.date}` : '';
+      if (hasTomorrow) {
+        dateText += ` · Tomorrow: ${nordPoolData.tomorrow.date}`;
+      } else {
+        dateText += ' · Tomorrow: not yet available (updates ~14:00 EET)';
+      }
+      dateEl.textContent = dateText;
+    }
 
-    // Hourly table
+    // Column headers
+    const colToday = $('#npColToday');
+    const colTomorrow = $('#npColTomorrow');
+    if (colToday) colToday.textContent = `Today ${nordPoolData.today.date || ''}`;
+    if (colTomorrow) colTomorrow.textContent = hasTomorrow
+      ? `Tomorrow ${nordPoolData.tomorrow.date}` : 'Tomorrow —';
+
+    // Hourly table — single table, 3 columns: Hour | Today | Tomorrow
     const tbody = $('#nordpoolBody');
     if (tbody) {
-      tbody.innerHTML = prices.map((p, i) => {
-        const hour = Api.formatHour(p.start);
-        const isMin = stats && p.valueKwh === stats.min;
-        const isMax = stats && p.valueKwh === stats.max;
-        let cls = '';
-        if (isMin) cls = 'below-breakeven';
-        if (isMax) cls = 'above-breakeven';
-        return `<tr class="${cls}" data-hour="${i}">
-          <td>${hour}</td>
-          <td style="font-family: var(--font-mono)">${p.valueKwh.toFixed(4)}</td>
-          <td>${isMin ? '🟢 Min' : isMax ? '🔴 Max' : ''}</td>
-        </tr>`;
-      }).join('');
+      const maxRows = Math.max(todayPrices.length, hasTomorrow ? tomorrowPrices.length : 24);
+      let html = '';
 
-      // Click to select hour
-      tbody.querySelectorAll('tr').forEach((tr) => {
-        tr.style.cursor = 'pointer';
-        tr.addEventListener('click', () => {
-          const hourIdx = tr.dataset.hour;
-          state.selectedNordPoolHour = hourIdx;
-          const sel = $('#nordpoolHourSelect');
-          if (sel) sel.value = hourIdx;
-          // Hide range picker when switching back to a specific hour
-          const rp = $('#nordpoolRangePicker');
-          if (rp) rp.classList.add('hidden');
-          highlightSelectedHour(hourIdx);
-          saveAndRecalc();
-        });
+      for (let i = 0; i < maxRows; i++) {
+        const tp = todayPrices[i] || null;
+        const tmrw = hasTomorrow ? (tomorrowPrices[i] || null) : null;
+        const hour = String(i).padStart(2, '0') + ':00';
+
+        // Determine row class based on today's price stats
+        let rowCls = '';
+        if (tp) {
+          if (todayStats && tp.valueKwh === todayStats.min) rowCls = 'below-breakeven';
+          if (todayStats && tp.valueKwh === todayStats.max) rowCls = 'above-breakeven';
+        }
+
+        // Today cell
+        const todayVal = tp
+          ? `<span style="font-family: var(--font-mono)">${tp.valueKwh.toFixed(4)}</span>`
+          : '<span style="color: var(--color-text-muted)">—</span>';
+
+        // Tomorrow cell
+        let tomorrowVal;
+        if (hasTomorrow && tmrw) {
+          const isTmrwMin = tomorrowStats && tmrw.valueKwh === tomorrowStats.min;
+          const isTmrwMax = tomorrowStats && tmrw.valueKwh === tomorrowStats.max;
+          const badge = isTmrwMin ? ' 🟢' : isTmrwMax ? ' 🔴' : '';
+          tomorrowVal = `<span style="font-family: var(--font-mono)">${tmrw.valueKwh.toFixed(4)}</span>${badge}`;
+        } else {
+          tomorrowVal = '<span style="color: var(--color-text-muted)">—</span>';
+        }
+
+        html += `<tr class="${rowCls}" data-hour="${i}">
+          <td>${hour}</td>
+          <td data-day="today">${todayVal}</td>
+          <td data-day="tomorrow">${tomorrowVal}</td>
+        </tr>`;
+      }
+
+      tbody.innerHTML = html;
+
+      // Click: click on a today cell selects that today hour, tomorrow cell selects tomorrow hour
+      tbody.querySelectorAll('tr[data-hour]').forEach((tr) => {
+        const hourIdx = tr.dataset.hour;
+        // Today cell
+        const tdToday = tr.querySelector('td[data-day="today"]');
+        if (tdToday && todayPrices[parseInt(hourIdx, 10)]) {
+          tdToday.style.cursor = 'pointer';
+          tdToday.addEventListener('click', (e) => {
+            e.stopPropagation();
+            state.selectedNordPoolHour = hourIdx;
+            const sel = $('#nordpoolHourSelect');
+            if (sel) sel.value = hourIdx;
+            const rp = $('#nordpoolRangePicker');
+            if (rp) rp.classList.add('hidden');
+            highlightSelectedHour(hourIdx);
+            saveAndRecalc();
+          });
+        }
+        // Tomorrow cell
+        const tdTomorrow = tr.querySelector('td[data-day="tomorrow"]');
+        if (tdTomorrow && hasTomorrow && tomorrowPrices[parseInt(hourIdx, 10)]) {
+          tdTomorrow.style.cursor = 'pointer';
+          tdTomorrow.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const value = `t${hourIdx}`;
+            state.selectedNordPoolHour = value;
+            const sel = $('#nordpoolHourSelect');
+            if (sel) sel.value = value;
+            const rp = $('#nordpoolRangePicker');
+            if (rp) rp.classList.add('hidden');
+            highlightSelectedHour(value);
+            saveAndRecalc();
+          });
+        }
       });
     }
 
@@ -687,16 +772,41 @@ const App = (() => {
 
   function updateNordPoolHourSelector() {
     const sel = $('#nordpoolHourSelect');
-    if (!sel || !nordPoolData) return;
+    if (!sel || !nordPoolData || !nordPoolData.today) return;
 
     sel.innerHTML = '<option value="average">Daily Average</option><option value="range">📅 Custom Range...</option>';
-    nordPoolData.prices.forEach((p, i) => {
+
+    // Today separator
+    const todaySep = document.createElement('option');
+    todaySep.disabled = true;
+    todaySep.textContent = `── Today (${nordPoolData.today.date || ''}) ──`;
+    sel.appendChild(todaySep);
+
+    nordPoolData.today.prices.forEach((p, i) => {
       const hour = Api.formatHour(p.start);
       const opt = document.createElement('option');
       opt.value = i;
       opt.textContent = `${hour} — ${p.valueKwh.toFixed(4)} €/kWh`;
       sel.appendChild(opt);
     });
+
+    // Tomorrow separator
+    const tomorrowSep = document.createElement('option');
+    tomorrowSep.disabled = true;
+    tomorrowSep.textContent = nordPoolData.tomorrow
+      ? `── Tomorrow (${nordPoolData.tomorrow.date || ''}) ──`
+      : '── Tomorrow (not available) ──';
+    sel.appendChild(tomorrowSep);
+
+    if (nordPoolData.tomorrow) {
+      nordPoolData.tomorrow.prices.forEach((p, i) => {
+        const hour = Api.formatHour(p.start);
+        const opt = document.createElement('option');
+        opt.value = `t${i}`;
+        opt.textContent = `${hour} — ${p.valueKwh.toFixed(4)} €/kWh`;
+        sel.appendChild(opt);
+      });
+    }
 
     sel.value = state.selectedNordPoolHour;
     // Ensure range picker visibility matches current selection
@@ -708,19 +818,43 @@ const App = (() => {
   function highlightSelectedHour(hourIdx) {
     const tbody = $('#nordpoolBody');
     if (!tbody) return;
+
+    // Clear all highlights first
+    tbody.querySelectorAll('tr').forEach((tr) => {
+      tr.classList.remove('selected-hour', 'in-range-row');
+      tr.querySelectorAll('td[data-day]').forEach((td) => {
+        td.classList.remove('cell-selected', 'cell-in-range');
+      });
+    });
+
     if (state.selectedNordPoolHour === 'range') {
       const rs = parseInt(state.rangeStart, 10);
       const re = parseInt(state.rangeEnd, 10);
-      tbody.querySelectorAll('tr').forEach((tr) => {
+      const isOvernight = rs > re;
+      tbody.querySelectorAll('tr[data-hour]').forEach((tr) => {
         const i = parseInt(tr.dataset.hour, 10);
-        const inRange = rs <= re ? (i >= rs && i <= re) : (i >= rs || i <= re);
-        tr.classList.remove('selected-hour');
-        tr.classList.toggle('in-range-row', inRange);
+        // Today column
+        const todayTd = tr.querySelector('td[data-day="today"]');
+        const tomorrowTd = tr.querySelector('td[data-day="tomorrow"]');
+        if (isOvernight) {
+          if (todayTd && i >= rs) todayTd.classList.add('cell-in-range');
+          if (tomorrowTd && i <= re) tomorrowTd.classList.add('cell-in-range');
+          if ((i >= rs) || (i <= re)) tr.classList.add('in-range-row');
+        } else {
+          if (todayTd && i >= rs && i <= re) todayTd.classList.add('cell-in-range');
+          if (i >= rs && i <= re) tr.classList.add('in-range-row');
+        }
       });
     } else {
-      tbody.querySelectorAll('tr').forEach((tr) => {
-        tr.classList.remove('in-range-row');
-        tr.classList.toggle('selected-hour', tr.dataset.hour === String(hourIdx));
+      const isTomorrow = String(hourIdx).startsWith('t');
+      const targetHour = isTomorrow ? String(hourIdx).substring(1) : String(hourIdx);
+      const targetCol = isTomorrow ? 'tomorrow' : 'today';
+      tbody.querySelectorAll('tr[data-hour]').forEach((tr) => {
+        if (tr.dataset.hour === targetHour) {
+          tr.classList.add('selected-hour');
+          const td = tr.querySelector(`td[data-day="${targetCol}"]`);
+          if (td) td.classList.add('cell-selected');
+        }
       });
     }
   }
@@ -729,17 +863,27 @@ const App = (() => {
     const avgEl = $('#rangeAvgValue');
     const countEl = $('#rangeHoursCount');
     if (!avgEl) return;
-    if (!nordPoolData || !nordPoolData.prices.length) {
+    if (!nordPoolData || !nordPoolData.today || !nordPoolData.today.prices.length) {
       avgEl.textContent = '—';
       if (countEl) countEl.textContent = '';
       return;
     }
     const rs = parseInt(state.rangeStart, 10);
     const re = parseInt(state.rangeEnd, 10);
-    const hoursInRange = nordPoolData.prices.filter((_, i) => {
-      if (rs <= re) return i >= rs && i <= re;
-      return i >= rs || i <= re; // overnight wrap
-    });
+    const isOvernight = rs > re;
+
+    let hoursInRange;
+    if (isOvernight) {
+      // Overnight: today's hours >= start + tomorrow's hours <= end
+      const todayHours = nordPoolData.today.prices.filter((_, i) => i >= rs);
+      const tomorrowHours = nordPoolData.tomorrow
+        ? nordPoolData.tomorrow.prices.filter((_, i) => i <= re)
+        : [];
+      hoursInRange = [...todayHours, ...tomorrowHours];
+    } else {
+      hoursInRange = nordPoolData.today.prices.filter((_, i) => i >= rs && i <= re);
+    }
+
     if (hoursInRange.length === 0) {
       avgEl.textContent = '—';
       if (countEl) countEl.textContent = '';
@@ -750,8 +894,10 @@ const App = (() => {
     if (countEl) {
       const fromH = rs.toString().padStart(2, '0') + ':00';
       const toH = re.toString().padStart(2, '0') + ':00';
-      const overnight = rs > re ? ' ★ overnight' : '';
-      countEl.textContent = `(${hoursInRange.length}h: ${fromH}–${toH}${overnight})`;
+      const overnight = isOvernight ? ' ★ overnight' : '';
+      const partialWarning = isOvernight && !nordPoolData.tomorrow
+        ? ' (tomorrow N/A — partial)' : '';
+      countEl.textContent = `(${hoursInRange.length}h: ${fromH}–${toH}${overnight}${partialWarning})`;
     }
     highlightSelectedHour('range');
   }
@@ -778,11 +924,14 @@ const App = (() => {
 
     const result = await Api.fetchNordPoolPrices();
 
-    if (result.prices && result.prices.length > 0) {
+    if (result.today && result.today.prices && result.today.prices.length > 0) {
       nordPoolData = result;
       renderNordPoolCard();
+      const todayCount = result.today.prices.length;
+      const tomorrowCount = result.tomorrow ? result.tomorrow.prices.length : 0;
+      const sourceLabel = result.source === 'cached' ? 'Cached' : 'Live';
       if (statusEl) {
-        statusEl.innerHTML = `<span class="badge badge--success">✓ ${result.source === 'cached' ? 'Cached' : 'Live'} (${result.prices.length}h)</span>`;
+        statusEl.innerHTML = `<span class="badge badge--success">✓ ${sourceLabel} (${todayCount}h today${tomorrowCount > 0 ? ` + ${tomorrowCount}h tomorrow` : ''})</span>`;
       }
     } else {
       if (statusEl) {
