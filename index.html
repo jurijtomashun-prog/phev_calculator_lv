@@ -35,39 +35,37 @@
         </div>
         <div class="card-body">
 
-          <!-- Battery -->
-          <div class="form-group">
-            <label for="batteryCapacity">Battery Capacity</label>
-            <div class="input-with-unit" style="max-width: 200px">
-              <input type="number" id="batteryCapacity" min="0" max="200" step="0.1" placeholder="e.g. 19.7">
-              <span class="unit">kWh</span>
+          <!-- Battery + Fuel side by side -->
+          <div class="form-row">
+            <div class="form-group">
+              <label for="batteryCapacity">Battery Capacity</label>
+              <div class="input-with-unit">
+                <input type="number" id="batteryCapacity" min="0" max="200" step="0.1" placeholder="e.g. 19.7">
+                <span class="unit">kWh</span>
+              </div>
+              <span class="error-text"></span>
             </div>
-            <span class="error-text"></span>
-          </div>
-
-          <!-- Fuel consumption -->
-          <div class="form-group">
-            <label for="fuelConsumption">Fuel Consumption (engine)</label>
-            <div class="input-with-unit">
-              <input type="number" id="fuelConsumption" min="0" max="30" step="0.1" placeholder="e.g. 7.0">
-              <span class="unit">L/100km</span>
+            <div class="form-group">
+              <label for="fuelConsumption">Fuel Consumption</label>
+              <div class="input-with-unit">
+                <input type="number" id="fuelConsumption" min="0" max="30" step="0.1" placeholder="e.g. 7.0">
+                <span class="unit">L/100km</span>
+              </div>
+              <span class="error-text"></span>
             </div>
-            <span class="error-text"></span>
           </div>
-
-          <div class="divider"></div>
 
           <!-- Electric Range -->
           <div class="form-row">
             <div class="form-group">
-              <label for="electricRangeSummer">Summer Electric Range</label>
+              <label for="electricRangeSummer">Summer Range</label>
               <div class="input-with-unit">
                 <input type="number" id="electricRangeSummer" min="0" max="500" step="1" placeholder="e.g. 55">
                 <span class="unit">km</span>
               </div>
             </div>
             <div class="form-group">
-              <label for="electricRangeWinter">Winter Electric Range</label>
+              <label for="electricRangeWinter">Winter Range</label>
               <div class="input-with-unit">
                 <input type="number" id="electricRangeWinter" min="0" max="500" step="1" placeholder="e.g. 35">
                 <span class="unit">km</span>
@@ -75,29 +73,39 @@
             </div>
           </div>
 
-          <!-- Season toggle -->
-          <div class="form-group" style="display:flex; align-items:center; gap: var(--space-md); flex-wrap: wrap;">
-            <label style="margin-bottom:0">Season:</label>
+          <!-- Season toggle + manual range on one line -->
+          <div class="form-group config-season-row">
             <div class="toggle-group">
               <button class="season-toggle active" data-season="summer">☀️ Summer</button>
               <button class="season-toggle" data-season="winter">❄️ Winter</button>
             </div>
-            <div style="display:flex; align-items:center; gap: var(--space-xs);">
+            <div class="manual-range-inline">
               <input type="checkbox" id="useManualRange" style="width:auto; accent-color: var(--color-primary);">
-              <label for="useManualRange" style="margin-bottom:0; font-size: var(--text-sm);">Manual range override</label>
+              <label for="useManualRange" style="margin-bottom:0; font-size: var(--text-sm); white-space:nowrap;">Override:</label>
+              <div class="input-with-unit" style="max-width:110px;">
+                <input type="number" id="manualRange" min="0" max="500" step="1" placeholder="km" disabled>
+                <span class="unit">km</span>
+              </div>
             </div>
           </div>
 
-          <div class="form-group">
-            <div class="input-with-unit" style="max-width: 200px">
-              <input type="number" id="manualRange" min="0" max="500" step="1" placeholder="km" disabled>
-              <span class="unit">km</span>
+          <div class="divider"></div>
+
+          <!-- Fuel price inline with consumption info -->
+          <div class="form-row">
+            <div class="form-group">
+              <label for="fuelPrice">⛽ Fuel Price <span style="color:var(--color-text-muted); font-weight:400">(95 oct.)</span></label>
+              <div class="input-with-unit">
+                <input type="number" id="fuelPrice" min="0" max="5" step="0.001" placeholder="1.53">
+                <span class="unit">€/L</span>
+              </div>
+              <span class="hint"><a href="https://gas.didnt.work/lv/95" target="_blank" rel="noopener">gas.didnt.work</a></span>
+            </div>
+            <div class="form-group" style="display:flex; flex-direction:column; justify-content:flex-end;">
+              <div class="consumption-info-box" id="consumptionInfo">Enter vehicle data</div>
             </div>
           </div>
 
-          <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-xs);" id="consumptionInfo">
-            Enter vehicle data above
-          </div>
         </div>
       </div>
 
@@ -204,8 +212,8 @@
                   <thead>
                     <tr>
                       <th>Hour</th>
-                      <th>€/kWh</th>
-                      <th></th>
+                      <th id="npColToday">Today €/kWh</th>
+                      <th id="npColTomorrow">Tomorrow €/kWh</th>
                     </tr>
                   </thead>
                   <tbody id="nordpoolBody"></tbody>
@@ -272,24 +280,7 @@
         </div>
       </div>
 
-      <!-- ============ FUEL PRICE CARD ============ -->
-      <div class="card">
-        <div class="card-header">
-          <h3>⛽ Fuel Price</h3>
-        </div>
-        <div class="card-body">
-          <div class="form-group">
-            <label for="fuelPrice">Fuel Price (95 octane, Riga)</label>
-            <div class="input-with-unit" style="max-width: 200px">
-              <input type="number" id="fuelPrice" min="0" max="5" step="0.001" placeholder="1.53">
-              <span class="unit">€/L</span>
-            </div>
-            <span class="hint">Enter current price manually — check your local station or <a href="https://gas.didnt.work/lv/95" target="_blank" rel="noopener">gas.didnt.work</a></span>
-          </div>
-        </div>
-      </div>
-
-      <!-- ============ COST SUMMARY CARD ============ -->
+      <!-- ============ COST SUMMARY + BREAK-EVEN CARD ============ -->
       <div class="card full-width">
         <div class="card-header">
           <h3>💰 Cost per 100 km</h3>
@@ -312,16 +303,8 @@
               <div class="cost-card__sub">per 100 km</div>
             </div>
           </div>
-        </div>
-      </div>
-
-      <!-- ============ BREAK-EVEN CARD ============ -->
-      <div class="card full-width">
-        <div class="card-header">
-          <h3>⚖️ Break-Even Analysis</h3>
-        </div>
-        <div class="card-body">
-          <div class="breakeven-indicator" id="breakevenIndicator">
+          <!-- Break-even inline -->
+          <div class="breakeven-indicator" id="breakevenIndicator" style="margin-top: var(--space-md);">
             <div class="breakeven-status">⚡</div>
             <div class="breakeven-details">
               <div class="title">Enter vehicle data to see break-even analysis</div>
