@@ -164,7 +164,7 @@ h4 { font-size: var(--text-lg); }
 /* --- Dashboard Grid --- */
 .dashboard-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  grid-template-columns: 1fr 1fr;
   gap: var(--space-lg);
 }
 
@@ -187,7 +187,7 @@ h4 { font-size: var(--text-lg); }
 }
 
 .card-header {
-  padding: var(--space-lg) var(--space-lg) var(--space-sm);
+  padding: var(--space-md) var(--space-md) var(--space-xs);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -204,7 +204,7 @@ h4 { font-size: var(--text-lg); }
 }
 
 .card-body {
-  padding: var(--space-sm) var(--space-lg) var(--space-lg);
+  padding: var(--space-sm) var(--space-md) var(--space-md);
 }
 
 /* --- Status Badge --- */
@@ -241,7 +241,7 @@ h4 { font-size: var(--text-lg); }
 
 /* --- Form Elements --- */
 .form-group {
-  margin-bottom: var(--space-md);
+  margin-bottom: var(--space-sm);
 }
 
 .form-group label {
@@ -761,11 +761,42 @@ tbody tr.selected-hour td:first-child::before {
   resize: vertical;
 }
 
+/* --- Season row + manual range inline --- */
+.config-season-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-sm);
+}
+
+.manual-range-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+/* Consumption info box */
+.consumption-info-box {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+  padding: var(--space-sm) var(--space-md);
+  font-family: var(--font-mono);
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+}
+
+
+
 /* --- Section Divider --- */
 .divider {
   height: 1px;
   background: var(--color-border);
-  margin: var(--space-md) 0;
+  margin: var(--space-sm) 0;
 }
 
 /* --- Electricity Surcharges --- */
@@ -918,6 +949,38 @@ tbody tr.in-range-row td:first-child {
   padding-left: calc(var(--space-sm) - 3px);
 }
 
+/* Cell-level highlighting for 3-column table */
+td.cell-in-range {
+  background: var(--color-primary-light) !important;
+  font-weight: 600;
+}
+
+td.cell-selected {
+  background: var(--color-primary-light) !important;
+  font-weight: 700;
+  box-shadow: inset 0 0 0 2px var(--color-primary);
+}
+
+/* Day header rows in two-day price table */
+tr.day-header-row {
+  background: var(--color-bg-secondary, #f0f0f5) !important;
+  font-weight: 600;
+  font-size: var(--text-sm);
+  cursor: default !important;
+}
+
+tr.day-header-row td {
+  padding: var(--space-xs) var(--space-sm);
+  border-bottom: 2px solid var(--color-border, #d0d0d0);
+  color: var(--color-text-secondary);
+}
+
+/* Unavailable (tomorrow not published) rows */
+tr.unavailable-row {
+  opacity: 0.45;
+  cursor: default !important;
+}
+
 /* --- No Data State --- */
 .no-data {
   text-align: center;
@@ -939,7 +1002,7 @@ tbody tr.in-range-row td:first-child {
 /* --- Responsive --- */
 @media (max-width: 1024px) {
   .dashboard-grid {
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: 1fr 1fr;
   }
 }
 
