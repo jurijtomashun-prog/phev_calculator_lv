@@ -1094,6 +1094,10 @@ tr.unavailable-row {
 }
 
 /* --- Charging Type Tabs --- */
+.card--compact {
+  max-width: 420px;
+}
+
 .charge-type-tabs {
   display: flex;
   gap: var(--space-xs);
